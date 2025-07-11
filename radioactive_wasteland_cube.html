@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radioactive Wasteland Cube</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, 
+                #2c1810 0%,     /* Dark brown sky */
+                #4a2c1a 20%,    /* Dusty brown */
+                #3d2914 40%,    /* Mid brown */
+                #1a0f0a 80%,    /* Very dark brown */
+                #0d0704 100%    /* Almost black */
+            );
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Dust particles floating in the air */
+        .dust-particle {
+            position: absolute;
+            background: rgba(139, 115, 85, 0.3);
+            border-radius: 50%;
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) translateX(0px);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) translateX(100px);
+                opacity: 0;
+            }
+        }
+
+        /* Radiation warning overlay */
+        .radiation-warning {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #ffff00;
+            font-size: 18px;
+            text-shadow: 0 0 10px #ffff00;
+            z-index: 100;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        /* Geiger counter effect */
+        .geiger-counter {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            text-shadow: 0 0 5px #00ff00;
+            z-index: 100;
+        }
+
+        /* Wasteland ground effect */
+        .ground-fog {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(to top, 
+                rgba(139, 115, 85, 0.4) 0%,
+                rgba(139, 115, 85, 0.2) 50%,
+                transparent 100%
+            );
+            z-index: 1;
+        }
+
+        canvas {
+            display: block;
+            position: relative;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <!-- Environmental effects -->
+    <div class="radiation-warning">⚠️ RADIATION DETECTED ⚠️</div>
+    <div class="geiger-counter">
+        <div>GEIGER COUNTER</div>
+        <div id="radiation-level">█████████░ 90%</div>
+        <div id="clicks-per-second">CPS: <span id="cps">847</span></div>
+    </div>
+    <div class="ground-fog"></div>
+
+    <!-- Three.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
+
+    <script type="module">
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x2c1810, 10, 50);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting setup for wasteland atmosphere
+        const ambientLight = new THREE.AmbientLight(0x4a2c1a, 0.3);
+        scene.add(ambientLight);
+
+        // Main radioactive light from the cube
+        const radioactiveLight = new THREE.PointLight(0x00ff41, 2, 20);
+        radioactiveLight.position.set(0, 0, 0);
+        radioactiveLight.castShadow = true;
+        scene.add(radioactiveLight);
+
+        // Distant wasteland sun
+        const sunLight = new THREE.DirectionalLight(0xff6b35, 0.5);
+        sunLight.position.set(-10, 10, 5);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // Create radioactive cube with enhanced effects
+        const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
+        
+        // Enhanced radioactive shader with more dramatic effects
+        const radioactiveMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                glowColor: { value: new THREE.Color(0x00ff41) },
+                pulseIntensity: { value: 1.0 },
+                radiationIntensity: { value: 1.0 }
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                varying vec3 vPosition;
+                varying vec3 vWorldPosition;
+                uniform float time;
+                uniform float radiationIntensity;
+                
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vPosition = position;
+                    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+                    
+                    // Intense vertex displacement for radioactive bubbling
+                    vec3 pos = position;
+                    float displacement = sin(time * 4.0 + position.x * 15.0) * 
+                                       cos(time * 3.0 + position.y * 12.0) * 
+                                       sin(time * 5.0 + position.z * 18.0);
+                    pos += normal * displacement * 0.08 * radiationIntensity;
+                    
+                    // Add secondary wave displacement
+                    float wave = sin(time * 8.0 + length(position) * 20.0) * 0.03;
+                    pos += normal * wave * radiationIntensity;
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 glowColor;
+                uniform float pulseIntensity;
+                uniform float radiationIntensity;
+                varying vec3 vNormal;
+                varying vec3 vPosition;
+                varying vec3 vWorldPosition;
+                
+                // Noise function for radiation patterns
+                float noise(vec3 p) {
+                    return sin(p.x * 10.0) * sin(p.y * 10.0) * sin(p.z * 10.0);
+                }
+                
+                void main() {
+                    // Enhanced fresnel for stronger edge glow
+                    float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 1.5);
+                    
+                    // Multiple pulsing frequencies for chaotic radiation
+                    float pulse1 = sin(time * 6.0) * 0.5 + 0.5;
+                    float pulse2 = sin(time * 8.0 + 1.0) * 0.3 + 0.7;
+                    float pulse3 = sin(time * 12.0 + 2.0) * 0.2 + 0.8;
+                    float combinedPulse = (pulse1 + pulse2 + pulse3) / 3.0;
+                    
+                    // Radiation energy patterns
+                    float energyPattern = noise(vPosition * 8.0 + time * 2.0) * 
+                                         noise(vPosition * 12.0 + time * 1.5) * 
+                                         noise(vPosition * 16.0 + time * 3.0);
+                    energyPattern = energyPattern * 0.5 + 0.5;
+                    
+                    // Radioactive core intensity
+                    float coreGlow = 1.0 - length(vPosition) / 2.0;
+                    coreGlow = pow(coreGlow, 2.0);
+                    
+                    // Electric arc simulation
+                    float electricArc = sin(vPosition.x * 30.0 + time * 10.0) * 
+                                       sin(vPosition.y * 25.0 + time * 8.0) * 
+                                       sin(vPosition.z * 35.0 + time * 12.0);
+                    electricArc = smoothstep(0.7, 1.0, abs(electricArc));
+                    
+                    // Combine all radiation effects
+                    vec3 baseColor = glowColor;
+                    vec3 radiationColor = baseColor * (fresnel * 2.0 + 0.5) * combinedPulse * pulseIntensity;
+                    radiationColor += baseColor * energyPattern * 0.8 * radiationIntensity;
+                    radiationColor += baseColor * coreGlow * 1.5;
+                    radiationColor += vec3(1.0, 1.0, 0.0) * electricArc * 0.8; // Yellow electric arcs
+                    
+                    // Add toxic green and yellow radiation colors
+                    radiationColor = mix(radiationColor, vec3(0.0, 1.0, 0.1), 0.6);
+                    radiationColor += vec3(1.0, 1.0, 0.0) * energyPattern * 0.3; // Yellow radiation
+                    
+                    // Intense emission
+                    radiationColor *= 1.5;
+                    
+                    float alpha = 0.7 + fresnel * 0.3 + energyPattern * 0.2;
+                    gl_FragColor = vec4(radiationColor, alpha);
+                }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
+        });
+
+        const radioactiveCube = new THREE.Mesh(cubeGeometry, radioactiveMaterial);
+        radioactiveCube.castShadow = true;
+        scene.add(radioactiveCube);
+
+        // Create radiation particle system
+        const particleCount = 200;
+        const particleGeometry = new THREE.BufferGeometry();
+        const particlePositions = new Float32Array(particleCount * 3);
+        const particleVelocities = new Float32Array(particleCount * 3);
+        const particleSizes = new Float32Array(particleCount);
+        
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            // Start particles near the cube
+            particlePositions[i3] = (Math.random() - 0.5) * 4;
+            particlePositions[i3 + 1] = (Math.random() - 0.5) * 4;
+            particlePositions[i3 + 2] = (Math.random() - 0.5) * 4;
+            
+            // Random velocities
+            particleVelocities[i3] = (Math.random() - 0.5) * 0.02;
+            particleVelocities[i3 + 1] = (Math.random() - 0.5) * 0.02;
+            particleVelocities[i3 + 2] = (Math.random() - 0.5) * 0.02;
+            
+            particleSizes[i] = Math.random() * 0.1 + 0.05;
+        }
+        
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+        
+        const particleMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                color: { value: new THREE.Color(0x00ff41) }
+            },
+            vertexShader: `
+                attribute float size;
+                uniform float time;
+                varying float vAlpha;
+                
+                void main() {
+                    vAlpha = sin(time * 5.0 + position.x * 10.0) * 0.5 + 0.5;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_PointSize = size * (300.0 / -mvPosition.z);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 color;
+                varying float vAlpha;
+                
+                void main() {
+                    float distance = length(gl_PointCoord - vec2(0.5));
+                    if (distance > 0.5) discard;
+                    
+                    float alpha = (1.0 - distance * 2.0) * vAlpha;
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+        
+        const radiationParticles = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(radiationParticles);
+
+        // Create energy rings around the cube
+        const ringGeometry = new THREE.RingGeometry(2.5, 3, 32);
+        const ringMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                color: { value: new THREE.Color(0x00ff41) }
+            },
+            vertexShader: `
+                uniform float time;
+                varying vec2 vUv;
+                
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    pos.z += sin(time * 4.0 + uv.x * 20.0) * 0.1;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 color;
+                varying vec2 vUv;
+                
+                void main() {
+                    float wave = sin(time * 8.0 + vUv.x * 30.0) * 0.5 + 0.5;
+                    float alpha = wave * (1.0 - smoothstep(0.0, 1.0, length(vUv - vec2(0.5))));
+                    gl_FragColor = vec4(color, alpha * 0.3);
+                }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
+        });
+        
+        const energyRing1 = new THREE.Mesh(ringGeometry, ringMaterial);
+        const energyRing2 = new THREE.Mesh(ringGeometry, ringMaterial.clone());
+        const energyRing3 = new THREE.Mesh(ringGeometry, ringMaterial.clone());
+        
+        energyRing1.rotation.x = Math.PI / 2;
+        energyRing2.rotation.y = Math.PI / 2;
+        energyRing3.rotation.z = Math.PI / 2;
+        
+        scene.add(energyRing1);
+        scene.add(energyRing2);
+        scene.add(energyRing3);
+
+        // Enhanced wireframe with pulsing effect
+        const wireframeGeometry = new THREE.EdgesGeometry(cubeGeometry);
+        const wireframeMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                color: { value: new THREE.Color(0x00ff41) }
+            },
+            vertexShader: `
+                uniform float time;
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 color;
+                void main() {
+                    float pulse = sin(time * 10.0) * 0.5 + 0.5;
+                    gl_FragColor = vec4(color, 0.8 + pulse * 0.2);
+                }
+            `,
+            transparent: true
+        });
+        const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+        radioactiveCube.add(wireframe);
+
+        // Create wasteland ground
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshLambertMaterial({ 
+            color: 0x3d2914,
+            transparent: true,
+            opacity: 0.8
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -3;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Add some debris/rocks in the wasteland
+        for (let i = 0; i < 20; i++) {
+            const debrisGeometry = new THREE.BoxGeometry(
+                Math.random() * 0.5 + 0.1,
+                Math.random() * 0.3 + 0.1,
+                Math.random() * 0.5 + 0.1
+            );
+            const debrisMaterial = new THREE.MeshLambertMaterial({ 
+                color: new THREE.Color().setHSL(0.1, 0.3, Math.random() * 0.3 + 0.1) 
+            });
+            const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+            
+            debris.position.set(
+                (Math.random() - 0.5) * 40,
+                -2.8,
+                (Math.random() - 0.5) * 40
+            );
+            debris.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+            debris.castShadow = true;
+            debris.receiveShadow = true;
+            scene.add(debris);
+        }
+
+        // Simple renderer without post-processing for now
+        let composer = null;
+
+        // Create floating dust particles
+        function createDustParticles() {
+            for (let i = 0; i < 15; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'dust-particle';
+                particle.style.width = Math.random() * 4 + 2 + 'px';
+                particle.style.height = particle.style.width;
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 20 + 's';
+                particle.style.animationDuration = (Math.random() * 10 + 15) + 's';
+                document.body.appendChild(particle);
+            }
+        }
+
+        createDustParticles();
+
+        // Geiger counter simulation
+        function updateGeigerCounter() {
+            const cpsElement = document.getElementById('cps');
+            const newCps = Math.floor(Math.random() * 200) + 750;
+            cpsElement.textContent = newCps;
+            
+            // Random clicking sound simulation (visual only)
+            if (Math.random() > 0.7) {
+                cpsElement.style.color = '#ffff00';
+                setTimeout(() => {
+                    cpsElement.style.color = '#00ff00';
+                }, 100);
+            }
+        }
+
+        setInterval(updateGeigerCounter, 200);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+
+            // Update shader uniforms
+            radioactiveMaterial.uniforms.time.value = time;
+            radioactiveMaterial.uniforms.pulseIntensity.value = Math.sin(time * 2) * 0.3 + 0.7;
+            radioactiveMaterial.uniforms.radiationIntensity.value = Math.sin(time * 1.5) * 0.5 + 1.0;
+
+            // Update particle system
+            particleMaterial.uniforms.time.value = time;
+            const positions = radiationParticles.geometry.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                // Move particles outward from cube
+                positions[i3] += particleVelocities[i3];
+                positions[i3 + 1] += particleVelocities[i3 + 1];
+                positions[i3 + 2] += particleVelocities[i3 + 2];
+                
+                // Reset particles that go too far
+                const distance = Math.sqrt(positions[i3]**2 + positions[i3 + 1]**2 + positions[i3 + 2]**2);
+                if (distance > 8) {
+                    positions[i3] = (Math.random() - 0.5) * 2;
+                    positions[i3 + 1] = (Math.random() - 0.5) * 2;
+                    positions[i3 + 2] = (Math.random() - 0.5) * 2;
+                }
+            }
+            radiationParticles.geometry.attributes.position.needsUpdate = true;
+
+            // Update energy rings
+            energyRing1.material.uniforms.time.value = time;
+            energyRing2.material.uniforms.time.value = time;
+            energyRing3.material.uniforms.time.value = time;
+            
+            energyRing1.rotation.z += 0.01;
+            energyRing2.rotation.x += 0.008;
+            energyRing3.rotation.y += 0.012;
+
+            // Update wireframe
+            wireframe.material.uniforms.time.value = time;
+
+            // Rotate the radioactive cube with more chaotic movement
+            radioactiveCube.rotation.x += 0.008 + Math.sin(time * 3) * 0.002;
+            radioactiveCube.rotation.y += 0.012 + Math.cos(time * 2) * 0.003;
+            radioactiveCube.rotation.z += 0.004 + Math.sin(time * 4) * 0.001;
+
+            // Animate the radioactive light
+            radioactiveLight.intensity = Math.sin(time * 3) * 0.5 + 1.5;
+            radioactiveLight.position.y = Math.sin(time * 1.5) * 0.5;
+
+            // Subtle camera movement for atmosphere
+            camera.position.x = Math.sin(time * 0.2) * 0.5;
+            camera.position.y = 2 + Math.sin(time * 0.3) * 0.3;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            // composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Add mouse interaction
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Subtle camera movement based on mouse
+            camera.position.x += mouseX * 0.1;
+            camera.position.y += mouseY * 0.1;
+        });
+
+        // Add click interaction for radiation burst
+        document.addEventListener('click', () => {
+            // Radiation burst effect
+            radioactiveMaterial.uniforms.pulseIntensity.value = 2.0;
+            radioactiveLight.intensity = 3.0;
+            
+            setTimeout(() => {
+                radioactiveMaterial.uniforms.pulseIntensity.value = 1.0;
+                radioactiveLight.intensity = 1.5;
+            }, 500);
+        });
+    </script>
+</body>
+</html>
